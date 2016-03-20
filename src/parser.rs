@@ -1,16 +1,6 @@
-use nom::{digit, alphanumeric};
+use nom::{digit, alphanumeric, ErrorKind, add_error_pattern};
 use std::str::FromStr;
-
-/* Simple parsers for the repeat-count and sequence-number */
-named!(pub repeat<&str, u8>,
-       map_res!(flat_map!(take_s!(1), digit), FromStr::from_str));
-named!(pub sequence<&str, char>,
-       map!(flat_map!(take_s!(1), is_a_s!("abcdefghijklmnopqrstuvwxyz")),
-            |s: &str| { s.chars().nth(0).unwrap() }));
-
-/* Parse the numeric data common to most fields */
-named!(numeric_data<&str, f32>,
-       map_res!(is_a_s!("+-1234567890."), FromStr::from_str));
+use std::collections;
 
 /* Store a Location, with latitude, longitude, and optional altitude. */
 #[derive(Debug, PartialEq)]
@@ -44,34 +34,55 @@ pub enum DataField<'a> {
     Comment(&'a str)
 }
 
+/* Store a whole packet */
+#[derive(Debug, PartialEq)]
+pub struct Packet<'a> {
+    repeat: u8,
+    sequence: char,
+    data: Vec<DataField<'a>>,
+    path: Vec<&'a str>
+}
+
+/* Simple parsers for the repeat-count and sequence-number */
+named!(repeat<&str, u8>, add_error!(ErrorKind::Custom(101),
+       map_res!(flat_map!(take_s!(1), digit), FromStr::from_str)));
+named!(sequence<&str, char>, add_error!(ErrorKind::Custom(102),
+       map!(flat_map!(take_s!(1), is_a_s!("abcdefghijklmnopqrstuvwxyz")),
+            |s: &str| { s.chars().nth(0).unwrap() })));
+
+/* Parse the numeric data common to most fields */
+named!(numeric_data<&str, f32>, add_error!(ErrorKind::Custom(201),
+       map_res!(is_a_s!("+-1234567890."), FromStr::from_str)));
+
 /* Macro to implement the common pattern of a letter followed by one or more
  * numbers separated by commas.
  */
 macro_rules! scalar_data_array {
-    ($typename:ident, $name:ident, $tag:expr) => {
-        named!(pub $name<&str, DataField>, chain!(
+    ($typename:ident, $name:ident, $tag:expr, $err:expr) => {
+        named!($name<&str, DataField>, add_error!(ErrorKind::Custom($err),
+        chain!(
             tag_s!($tag) ~
             data: separated_nonempty_list!(tag_s!(","), numeric_data),
             || {DataField::$typename(data)}
-        ));
+        )));
     }
 }
 
 /* Generate parsers for the simple types as above. */
-scalar_data_array!(Temperature, temperature, "T");
-scalar_data_array!(Voltage, voltage, "V");
-scalar_data_array!(Humidity, humidity, "H");
-scalar_data_array!(Pressure, pressure, "P");
-scalar_data_array!(Sun, sun, "S");
-scalar_data_array!(RSSI, rssi, "R");
-scalar_data_array!(Count, count, "C");
-scalar_data_array!(Custom, custom, "X");
+scalar_data_array!(Temperature, temperature, "T", 301);
+scalar_data_array!(Voltage, voltage, "V", 302);
+scalar_data_array!(Humidity, humidity, "H", 303);
+scalar_data_array!(Pressure, pressure, "P", 304);
+scalar_data_array!(Sun, sun, "S", 305);
+scalar_data_array!(RSSI, rssi, "R", 306);
+scalar_data_array!(Count, count, "C", 307);
+scalar_data_array!(Custom, custom, "X", 308);
 
 /* Parse a Location.
  * Note that (a bug in Nom?) there must be some remaining data after the end
  * of the location if there is no altitude specified.
  */
-named!(pub location<&str, DataField>, chain!(
+named!(location<&str, DataField>, add_error!(ErrorKind::Custom(309), chain!(
     tag_s!("L") ~
     latitude: numeric_data ~
     tag_s!(",") ~
@@ -79,70 +90,86 @@ named!(pub location<&str, DataField>, chain!(
     altitude: preceded!(tag_s!(","), numeric_data)?,
     || {DataField::Location(Location{
             latitude: latitude, longitude: longitude, altitude: altitude})}
-));
+)));
 
 /* Parse a WindSpeed.
  * Note that as with `location`, there must be some remaining data after the
  * end of the wind speed if there is no bearing specified.
  */
-named!(pub windspeed<&str, DataField>, chain!(
+named!(windspeed<&str, DataField>, add_error!(ErrorKind::Custom(310), chain!(
     tag_s!("W") ~
     speed: numeric_data ~
     bearing: preceded!(tag_s!(","), numeric_data)?,
     || {DataField::WindSpeed(WindSpeed{speed: speed, bearing: bearing})}
-));
+)));
 
 /* Parse Zombie mode. */
-named!(pub zombie<&str, DataField>, chain!(
+named!(zombie<&str, DataField>, add_error!(ErrorKind::Custom(311), chain!(
     tag_s!("Z") ~
     mode: flat_map!(take_s!(1), digit),
     || {DataField::Zombie(mode.parse::<u8>().unwrap())}
-));
+)));
 
 /* Parse comments/messages */
-named!(pub comment<&str, DataField>, chain!(
+named!(comment<&str, DataField>, add_error!(ErrorKind::Custom(312), chain!(
     tag_s!(":") ~
     comment: is_a_s!("abcdefghijklmnopqrstuvwxyz0123456789+-. "),
-    || {DataField::Comment(comment)}));
+    || {DataField::Comment(comment)})));
 
 /* Parse the path at the end of the message */
-named!(pub path<&str, Vec<&str> >,
+named!(path<&str, Vec<&str> >, add_error!(ErrorKind::Custom(401),
     delimited!(
         tag_s!("["),
         separated_nonempty_list!(tag_s!(","), alphanumeric),
         tag_s!("]")
     )
-);
+));
 
 /* Parse the data section of a packet */
-named!(pub packet_data<&str, Vec<DataField> >, many1!(alt!(
-    temperature | voltage | humidity | pressure | sun | rssi | count |
-    custom | location | windspeed | zombie | comment)));
+named!(packet_data<&str, Vec<DataField> >, add_error!(ErrorKind::Custom(401),
+    many1!(alt!(
+        temperature | voltage | humidity | pressure | sun | rssi | count |
+        custom | location | windspeed | zombie | comment))));
 
-/* Store a whole packet */
-#[derive(Debug, PartialEq)]
-pub struct Packet<'a> {
-    repeat: u8,
-    sequence: char,
-    data: Vec<DataField<'a> >,
-    path: Vec<&'a str>
-}
-
-named!(pub packet<&str, Packet>, chain!(
+/* Parse an entire packet */
+named!(pub parse<&str, Packet>, add_error!(ErrorKind::Custom(501), chain!(
     repeat: repeat ~
     sequence: sequence ~
     data: packet_data ~
     path: path,
     || { Packet{ repeat: repeat, sequence: sequence, data: data, path: path }}
-));
+)));
+
+pub fn setup_err_map(err_map: &mut collections::HashMap<Vec<ErrorKind>, &str>) {
+    add_error_pattern(
+        err_map,
+        parse("aaT1[A]"),
+        "Repeat count must be 0-9"
+    );
+
+    add_error_pattern(
+        err_map,
+        parse("31T1[A]"),
+        "Sequence number must be a-z"
+    );
+
+    add_error_pattern(
+        err_map,
+        parse("3aTa[A]"),
+        "Temperature must be numeric"
+    );
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::numeric_data;
+    use super::{repeat, sequence, numeric_data, temperature, voltage, humidity,
+                pressure, sun, rssi, count, custom, location, windspeed,
+                zombie, comment, path, packet_data};
     use nom::IResult::{Done, Error};
     use nom::Err::Position;
-    use nom::ErrorKind;
+    use nom::{ErrorKind, error_to_list};
+    use std::collections;
 
     #[test]
     fn test_numeric_data() {
@@ -271,7 +298,7 @@ mod tests {
     #[test]
     fn test_packet() {
         assert_eq!(
-            packet("3bT21S80[AG,AH]"),
+            parse("3bT21S80[AG,AH]"),
             Done("",
                  Packet {
                      repeat: 3,
@@ -284,5 +311,17 @@ mod tests {
                  }
             )
         );
+    }
+
+    #[test]
+    fn test_errors() {
+        let mut err_map = collections::HashMap::new();
+        setup_err_map(&mut err_map);
+        if let Error(e) = parse("3!T12[A]") {
+            assert_eq!(err_map.get(&error_to_list(&e)), Some(&"Sequence number must be a-z"));
+        };
+        if let Error(e) = parse("!aT12[A]") {
+            assert_eq!(err_map.get(&error_to_list(&e)), Some(&"Repeat count must be 0-9"));
+        };
     }
 }
