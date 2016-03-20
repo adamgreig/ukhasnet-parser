@@ -25,7 +25,7 @@ pub enum DataField<'a> {
     Humidity(Vec<f32>),
     Pressure(Vec<f32>),
     Sun(Vec<f32>),
-    RSSI(Vec<f32>),
+    Rssi(Vec<f32>),
     Count(Vec<f32>),
     Custom(Vec<f32>),
     Location(Location),
@@ -74,7 +74,7 @@ scalar_data_array!(Voltage, voltage, "V", 302);
 scalar_data_array!(Humidity, humidity, "H", 303);
 scalar_data_array!(Pressure, pressure, "P", 304);
 scalar_data_array!(Sun, sun, "S", 305);
-scalar_data_array!(RSSI, rssi, "R", 306);
+scalar_data_array!(Rssi, rssi, "R", 306);
 scalar_data_array!(Count, count, "C", 307);
 scalar_data_array!(Custom, custom, "X", 308);
 
@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(sun("S12.5,-15,8"),
                    Done("", DataField::Sun(vec!{12.5, -15., 8.})));
         assert_eq!(rssi("R-12,-15,-8"),
-                   Done("", DataField::RSSI(vec!{-12., -15., -8.})));
+                   Done("", DataField::Rssi(vec!{-12., -15., -8.})));
         assert_eq!(count("C123"),
                    Done("", DataField::Count(vec!{123.})));
         assert_eq!(custom("X123,4.56"),
