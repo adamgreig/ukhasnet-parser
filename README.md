@@ -6,7 +6,7 @@ A parser for the UKHASnet protocol written in Rust using the Nom library.
 extern crate ukhasnet_parser;
 extern crate nom;
 
-use ukhasnet_parser::parser::parse;
+use ukhasnet_parser::parse;
 use nom::IResult::{Done, Error};
 
 pub fn main() {

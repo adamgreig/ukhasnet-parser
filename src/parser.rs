@@ -140,6 +140,7 @@ named!(pub parse<&str, Packet>, add_error!(ErrorKind::Custom(501), chain!(
     || { Packet{ repeat: repeat, sequence: sequence, data: data, path: path }}
 )));
 
+#[allow(dead_code)]
 pub fn setup_err_map(err_map: &mut collections::HashMap<Vec<ErrorKind>, &str>) {
     add_error_pattern(
         err_map,

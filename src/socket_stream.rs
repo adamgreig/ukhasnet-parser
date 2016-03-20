@@ -52,7 +52,7 @@ fn main() {
 
         println!("[{}] ({}) {}:", message.t, message.r, message.nn);
 
-        match ukhasnet_parser::parser::parse(&message.p) {
+        match ukhasnet_parser::parse(&message.p) {
             Done(_, p) => println!("{:?}", p),
             Error(e) => {println!("Error parsing packet: {}", e); continue;},
             _ => {println!("Unknown error parsing packet"); continue;}
