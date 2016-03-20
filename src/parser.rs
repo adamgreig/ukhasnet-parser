@@ -7,16 +7,16 @@ pub use nom::IResult::{Done, Error, Incomplete};
 /* Store a Location, with latitude, longitude, and optional altitude. */
 #[derive(Debug, PartialEq)]
 pub struct Location {
-    latitude: f32,
-    longitude: f32,
-    altitude: Option<f32>,
+    pub latitude: f32,
+    pub longitude: f32,
+    pub altitude: Option<f32>,
 }
 
 /* Store a Wind Speed, with speed and optional bearing. */
 #[derive(Debug, PartialEq)]
 pub struct WindSpeed {
-    speed: f32,
-    bearing: Option<f32>,
+    pub speed: f32,
+    pub bearing: Option<f32>,
 }
 
 /* Store one of any of the data types */
@@ -39,10 +39,10 @@ pub enum DataField<'a> {
 /* Store a whole packet */
 #[derive(Debug, PartialEq)]
 pub struct Packet<'a> {
-    repeat: u8,
-    sequence: char,
-    data: Vec<DataField<'a>>,
-    path: Vec<&'a str>
+    pub repeat: u8,
+    pub sequence: char,
+    pub data: Vec<DataField<'a>>,
+    pub path: Vec<&'a str>
 }
 
 /* Simple parsers for the repeat-count and sequence-number */
