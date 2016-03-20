@@ -2,4 +2,4 @@
 extern crate nom;
 
 mod parser;
-pub use parser::{parse, Done, Error, Incomplete};
+pub use parser::{parse, Location, WindSpeed, DataField, Packet, Done, Error, Incomplete};
