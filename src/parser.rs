@@ -129,7 +129,7 @@ named!(path<&str, Vec<&str> >, add_error!(ErrorKind::Custom(401),
 
 /* Parse the data section of a packet */
 named!(packet_data<&str, Vec<DataField> >, add_error!(ErrorKind::Custom(401),
-    many1!(alt!(
+    many0!(alt!(
         temperature | voltage | humidity | pressure | sun | rssi | count |
         custom | location | windspeed | zombie | comment))));
 
