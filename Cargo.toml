@@ -6,3 +6,11 @@ authors = ["Adam Greig <adam@adamgreig.com>"]
 [dependencies]
 nom = "1.2.2"
 rustc-serialize = "0.3"
+
+[lib]
+name = "ukhasnet_parser"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ukhasnet-parser-socket-stream"
+path = "src/socket_stream.rs"
