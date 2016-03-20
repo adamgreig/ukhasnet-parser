@@ -23,3 +23,7 @@ path = "src/socket_stream.rs"
 [[bin]]
 name = "ukhasnet-parser-simple-demo"
 path = "examples/simple.rs"
+
+[[bin]]
+name = "ukhasnet-parser-bench"
+path = "src/bench.rs"

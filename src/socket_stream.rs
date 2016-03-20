@@ -50,7 +50,8 @@ fn main() {
             }
         };
 
-        println!("[{}] ({}) {}:", message.t, message.r, message.nn);
+        print!("[{}] ({}) {}: ", message.t, message.r, message.nn);
+        println!("{}", message.p);
 
         match parse(&message.p) {
             Done(_, p) => println!("{:?}", p),
@@ -59,5 +60,6 @@ fn main() {
         }
 
         println!("");
+
     }
 }
