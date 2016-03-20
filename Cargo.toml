@@ -5,6 +5,4 @@ authors = ["Adam Greig <adam@adamgreig.com>"]
 
 [dependencies]
 nom = "1.2.2"
-websocket = "0.15.2"
-hyper = "0.8.0"
-cookie = "0.2.2"
+rustc-serialize = "0.3"
