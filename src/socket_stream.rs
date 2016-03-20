@@ -8,7 +8,7 @@ use std::io::BufReader;
 use std::net::TcpStream;
 
 use rustc_serialize::json;
-use nom::IResult::{Done, Error};
+use ukhasnet_parser::{parse, Done, Error, Incomplete};
 
 #[derive(Debug,RustcDecodable)]
 struct SocketMessage {
@@ -52,10 +52,10 @@ fn main() {
 
         println!("[{}] ({}) {}:", message.t, message.r, message.nn);
 
-        match ukhasnet_parser::parse(&message.p) {
+        match parse(&message.p) {
             Done(_, p) => println!("{:?}", p),
             Error(e) => {println!("Error parsing packet: {}", e); continue;},
-            _ => {println!("Unknown error parsing packet"); continue;}
+            Incomplete(_) => {println!("Incomplete data"); continue;}
         }
 
         println!("");

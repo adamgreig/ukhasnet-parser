@@ -2,6 +2,8 @@ use nom::{digit, alphanumeric, ErrorKind, add_error_pattern};
 use std::str::FromStr;
 use std::collections;
 
+pub use nom::IResult::{Done, Error, Incomplete};
+
 /* Store a Location, with latitude, longitude, and optional altitude. */
 #[derive(Debug, PartialEq)]
 pub struct Location {
