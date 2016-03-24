@@ -202,7 +202,6 @@ named!(path<&str, Vec<&str>, ParseError>,
 named!(packet_data<&str, Vec<DataField>, ParseError>,
     error!(Custom(ParseError::InvalidData),
         many0!(
-            error!(Custom(ParseError::UnknownType),
                 dbg!(switch!(fix!(peek!(take_s!(1))),
                     "T" => call!(temperature)   |
                     "V" => call!(voltage)       |
@@ -217,7 +216,7 @@ named!(packet_data<&str, Vec<DataField>, ParseError>,
                     "Z" => call!(zombie)        |
                     ":" => call!(comment)
                 )
-            ))
+            )
         )
     )
 );
