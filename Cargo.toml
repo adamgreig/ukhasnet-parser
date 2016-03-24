@@ -1,7 +1,7 @@
 [package]
 name = "ukhasnet-parser"
 description = "A parser for the UKHASnet protocol"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Adam Greig <adam@adamgreig.com>"]
 repository = "https://github.com/adamgreig/ukhasnet-parser"
 homepage = "https://github.com/adamgreig/ukhasnet-parser"
