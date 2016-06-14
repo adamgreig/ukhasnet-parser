@@ -25,6 +25,7 @@ pub struct WindSpeed {
 pub enum DataField<'a> {
     Temperature(Vec<f32>),
     Voltage(Vec<f32>),
+    Current(Vec<f32>),
     Humidity(Vec<f32>),
     Pressure(Vec<f32>),
     Sun(Vec<f32>),
@@ -133,6 +134,7 @@ macro_rules! scalar_data_array {
 /* Generate parsers for the simple types as above. */
 scalar_data_array!(Temperature, temperature, "T");
 scalar_data_array!(Voltage, voltage, "V");
+scalar_data_array!(Current, current, "I");
 scalar_data_array!(Humidity, humidity, "H");
 scalar_data_array!(Pressure, pressure, "P");
 scalar_data_array!(Sun, sun, "S");
@@ -205,6 +207,7 @@ named!(packet_data<&str, Vec<DataField>, ParseError>,
                 dbg!(switch!(fix!(peek!(take_s!(1))),
                     "T" => call!(temperature)   |
                     "V" => call!(voltage)       |
+                    "I" => call!(current)       |
                     "H" => call!(humidity)      |
                     "P" => call!(pressure)      |
                     "S" => call!(sun)           |
@@ -237,9 +240,9 @@ named!(pub parse<&str, Packet, ParseError>,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{repeat, sequence, numeric_data, temperature, voltage, humidity,
-                pressure, sun, rssi, count, custom, location, windspeed,
-                zombie, comment, path, packet_data};
+    use super::{repeat, sequence, numeric_data, temperature, voltage, current,
+                humidity, pressure, sun, rssi, count, custom, location,
+                windspeed, zombie, comment, path, packet_data};
     use nom::Err::{Position, NodePosition};
     use nom::ErrorKind::{Custom, Fix};
 
@@ -293,6 +296,8 @@ mod tests {
                    Done("", DataField::Temperature(vec!{12.5, -15., 8.})));
         assert_eq!(voltage("V12.5,-15,8"),
                    Done("", DataField::Voltage(vec!{12.5, -15., 8.})));
+        assert_eq!(current("I1,2.5,-3"),
+                   Done("", DataField::Current(vec!{1., 2.5, -3.})));
         assert_eq!(humidity("H12.5,-15,8"),
                    Done("", DataField::Humidity(vec!{12.5, -15., 8.})));
         assert_eq!(pressure("P12.5,-15,8"),
