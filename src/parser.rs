@@ -2,6 +2,19 @@ use pest::prelude::*;
 use packet::{Location, WindSpeed, DataField, Packet};
 
 impl_rdp! {
+    /*
+     * UKHASnet Packet Grammar
+     *
+     * Source: https://ukhas.net/wiki/packet
+     * This syntax: http://dragostis.github.io/pest/pest/macro.grammar!.html#syntax
+     *
+     * In brief: Literals are quoted and in arrays,
+     *           ~ concatenates,
+     *           + means "one or more"
+     *           * means "zero or more"
+     *           ? means "optional"
+     *           _ means "this token is silent and is subsumed into the parent"
+     */
     grammar! {
         digit       = _{ ['0'..'9'] }
         integer     =  { (["+"] | ["-"])? ~ digit+ }
@@ -44,17 +57,31 @@ impl_rdp! {
 
         data        =   { data_field* }
 
-        message_content =  { (letter | digit | symbol)* }
-        message         =  { [":"] ~ message_content }
+        message_content     =  { (letter | digit | symbol)* }
+        message             =  { [":"] ~ message_content }
 
-        node_name_content =  { (uppercase_letter | digit)* }
-        node_name         =  { node_name_content }
+        node_name_content   =  { (uppercase_letter | digit)* }
+        node_name           =  { node_name_content }
 
         path        =  { ["["] ~ node_name ~ ( [","] ~ node_name )* ~ ["]"] }
 
-        packet      =  { repeat ~ sequence ~ data ~ message? ~ path ~ eoi}
+        packet      =  { repeat ~ sequence ~ data ~ message? ~ path ~ eoi }
     }
 
+    /*
+     * UKHASnet packet parsing
+     *
+     * Each rule maps one or more tokens from the stream into some reduced
+     * type, for example a sequence token into a char, or three decimal tokens
+     * into a Location struct.
+     *
+     * Some rules are called recursively, such as _decimal_list, which first
+     * consumes the decimal_list token, then consumes a number of decimals.
+     * Think about it backwards: it will recurse into the stack until it cannot
+     * match any decimals, at which point it returns a new Vec, then steps back
+     * up the stack, inserting into that Vec, until it eventually returns it.
+     * _data and _path behave similarly.
+     */
     process! {
         _repeat(&self) -> u8 {
             (&repeat: repeat) => repeat.parse::<u8>().unwrap()

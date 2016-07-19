@@ -21,13 +21,13 @@ name = "ukhasnet-parser-socket-stream"
 path = "src/socket_stream.rs"
 
 [[bin]]
-name = "ukhasnet-parser-simple-demo"
+name = "ukhasnet-parser"
+path = "src/cli.rs"
+
+[[bin]]
+name = "ukhasnet-parser-simple"
 path = "examples/simple.rs"
 
 [[bin]]
-name = "ukhasnet-parser-bench"
-path = "src/bench.rs"
-
-[[bin]]
-name = "ukhasnet-parser-pest"
-path = "src/trypest.rs"
+name = "ukhasnet-parser-batch"
+path = "examples/batch.rs"

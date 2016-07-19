@@ -2,8 +2,7 @@
 
 #[macro_use]
 extern crate pest;
-pub use pest::Parser;
-use pest::StringInput;
+pub use pest::{Parser, StringInput};
 
 mod parser;
 mod packet;
