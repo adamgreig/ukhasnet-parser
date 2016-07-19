@@ -1,6 +1,5 @@
 extern crate ukhasnet_parser;
-extern crate pest;
-use ukhasnet_parser::{Rdp, StringInput, Parser};
+use ukhasnet_parser::{Rdp, StringInput, Parser, ParserError};
 use std::env::args;
 
 fn main() {
@@ -12,6 +11,7 @@ fn main() {
     println!("Parsing '{}':", packet);
 
     let mut parser = Rdp::new(StringInput::new(&packet));
+
     match parser.packet() {
         true => println!("Parsed OK:"),
         false => {
@@ -24,6 +24,9 @@ fn main() {
 
             println!("Expected one of:");
             println!("{:?}", expected);
+
+            let err = ParserError::from_parser(&mut parser);
+            println!("Error: {:?}", err);
 
             panic!("Cannot proceed");
         }
