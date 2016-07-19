@@ -7,13 +7,13 @@ pub use pest::{Parser, StringInput};
 mod parser;
 mod packet;
 
-pub use parser::{Rdp};
+pub use parser::{Rdp, ParserError};
 pub use packet::{Location, WindSpeed, DataField, Packet};
 
-pub fn parse(packet: &String) -> Option<Packet> {
+pub fn parse(packet: &String) -> Result<Packet, ParserError> {
     let mut parser = Rdp::new(StringInput::new(packet));
     match parser.packet() {
-        true => Some(parser.parse()),
-        false => None,
+        true => Ok(parser.parse()),
+        false => Err(ParserError::from_parser(&mut parser)),
     }
 }

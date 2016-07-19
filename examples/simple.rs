@@ -8,7 +8,7 @@ pub fn main() {
     println!("Parsing {}...", s);
 
     match parse(&s) {
-        Some(p) => println!("{:?}", p),
-        None => println!("Error"),
+        Ok(p) => println!("{:?}", p),
+        Err(_) => println!("Error"),
     }
 }

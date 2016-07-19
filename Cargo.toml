@@ -17,12 +17,12 @@ name = "ukhasnet_parser"
 path = "src/lib.rs"
 
 [[bin]]
-name = "ukhasnet-parser-socket-stream"
-path = "src/socket_stream.rs"
-
-[[bin]]
 name = "ukhasnet-parser"
 path = "src/cli.rs"
+
+[[bin]]
+name = "ukhasnet-parser-socket-stream"
+path = "examples/socket_stream.rs"
 
 [[bin]]
 name = "ukhasnet-parser-simple"

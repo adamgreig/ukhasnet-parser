@@ -53,8 +53,8 @@ fn main() {
         println!("{}", message.p);
 
         match parse(&message.p) {
-            Some(p) => println!("{:?}", p),
-            None => { println!("Error parsing packet"); continue; },
+            Ok(p) => println!("{:?}", p),
+            Err(_) => { println!("Error parsing packet"); continue; },
         }
 
         println!("");

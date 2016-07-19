@@ -22,8 +22,8 @@ fn main() {
         let line = line.unwrap();
         total += 1;
         match parse(&line) {
-            Some(_) => parsed += 1,
-            None => (),
+            Ok(_) => parsed += 1,
+            Err(_) => (),
         }
     }
 

@@ -1,4 +1,6 @@
 use pest::prelude::*;
+use std::error;
+use std::fmt;
 use packet::{Location, WindSpeed, DataField, Packet};
 
 impl_rdp! {
@@ -198,5 +200,33 @@ impl_rdp! {
                 Packet{ repeat: repeat, sequence: sequence, data: data,
                         comment: message, path: path }
         }
+    }
+}
+
+/// Contains the position in the input at which a parsing error occurred,
+/// and a Vec of token names we expected to see instead.
+#[derive(Debug)]
+pub struct ParserError {
+    pub position: usize,
+    pub expected: Vec<String>,
+}
+
+impl fmt::Display for ParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Parser error at position {}", self.position)
+    }
+}
+
+impl error::Error for ParserError {
+    fn description(&self) -> &str { "Parser error" }
+    fn cause(&self) -> Option<&error::Error> { None }
+}
+
+impl ParserError {
+    /// Extract error information from a parser.
+    pub fn from_parser<'a, T: Input<'a>>(parser: &mut Rdp<T>) -> ParserError {
+        let (expected, position) = parser.expected();
+        let exp = expected.iter().map(|r| { format!("{:?}", r) }).collect();
+        ParserError{ position: position, expected: exp }
     }
 }
