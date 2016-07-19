@@ -2,14 +2,14 @@
 name = "ukhasnet-parser"
 version = "0.3.0"
 dependencies = [
- "nom 1.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "nom 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.18 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "nom"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]

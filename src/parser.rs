@@ -201,6 +201,7 @@ mod tests {
     use super::{repeat, sequence, numeric_data, temperature, voltage, humidity,
                 pressure, sun, rssi, count, custom, location, windspeed,
                 zombie, comment, path, packet_data};
+    use packet::{Packet,WindSpeed,Location,DataField};
     use nom::Err::{Position, NodePosition};
     use nom::ErrorKind::{Custom, Fix};
 
