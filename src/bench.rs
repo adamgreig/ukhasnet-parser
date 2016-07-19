@@ -11,8 +11,15 @@ fn main() {
         Err(_) => panic!()
     };
     let r = BufReader::new(f);
+    let mut total = 0;
+    let mut parsed = 0;
     for line in r.lines() {
         let line = line.unwrap();
-        parse(&line);
+        total += 1;
+        match parse(&line) {
+            Some(_) => parsed += 1,
+            None => (),
+        }
     }
+    println!("Parsed {}/{} packets", parsed, total);
 }

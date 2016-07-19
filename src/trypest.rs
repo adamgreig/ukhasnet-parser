@@ -5,7 +5,7 @@ use ukhasnet_parser::Rdp;
 use pest::prelude::*;
 
 fn main() {
-    let packet = "2bT12.34,15H38W123:test[AG]";
+    let packet = "2bT12.34,15H38W123Z1:test[AG]";
     let mut parser = Rdp::new(StringInput::new(&packet));
     assert!(parser.packet());
     let mut indent = 0;

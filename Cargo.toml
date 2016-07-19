@@ -9,7 +9,6 @@ license = "MIT"
 readme = "README.md"
 
 [dependencies]
-nom = "1.2.2"
 pest = "0.3.2"
 rustc-serialize = "0.3"
 

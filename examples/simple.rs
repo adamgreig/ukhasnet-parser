@@ -1,13 +1,11 @@
 extern crate ukhasnet_parser;
-extern crate nom;
 
-use ukhasnet_parser::{parse, Done, Error, Incomplete};
+use ukhasnet_parser::{parse};
 
 pub fn main() {
-    let s = "2bT12,15H38:test[AG]";
+    let s = "2bT12,15H38:test[AG]".to_owned();
     match parse(&s) {
-        Done(_, p) => println!("{:?}", p),
-        Error(e) => println!("Error {}", e),
-        Incomplete(_) => println!("Incomplete")
+        Some(p) => println!("{:?}", p),
+        None => println!("Error"),
     }
 }
