@@ -104,16 +104,16 @@ macro_rules! fix (
 
 /* Simple parsers for the repeat-count and sequence-number */
 named!(repeat<&str, u8, ParseError>,
-       error!(Custom(ParseError::RepeatNotNumeric), fix!(
+       return_error!(Custom(ParseError::RepeatNotNumeric), fix!(
        map_res!(flat_map!(take_s!(1), digit), FromStr::from_str))));
 named!(sequence<&str, char, ParseError>,
-       error!(Custom(ParseError::SequenceNotAlphabetic), fix!(
+       return_error!(Custom(ParseError::SequenceNotAlphabetic), fix!(
        map!(flat_map!(take_s!(1), is_a_s!("abcdefghijklmnopqrstuvwxyz")),
             |s: &str| { s.chars().nth(0).unwrap() }))));
 
 /* Parse the numeric data common to most fields */
 named!(numeric_data<&str, f32, ParseError>,
-       error!(Custom(ParseError::DataNotNumeric), fix!(
+       return_error!(Custom(ParseError::DataNotNumeric), fix!(
        map_res!(is_a_s!("+-1234567890."), FromStr::from_str))));
 
 /* Macro to implement the common pattern of a letter followed by one or more
@@ -122,7 +122,7 @@ named!(numeric_data<&str, f32, ParseError>,
 macro_rules! scalar_data_array {
     ($typename:ident, $name:ident, $tag:expr) => {
         named!($name<&str, DataField, ParseError>,
-        error!(Custom(ParseError::InvalidDataField),
+        return_error!(Custom(ParseError::InvalidDataField),
         chain!(
             fix!(tag_s!($tag)) ~
             data: separated_nonempty_list!(fix!(tag_s!(",")), numeric_data),
@@ -147,7 +147,7 @@ scalar_data_array!(Custom, custom, "X");
  * of the location if there is no altitude specified.
  */
 named!(location<&str, DataField, ParseError>,
-    error!(Custom(ParseError::InvalidLocation),
+    return_error!(Custom(ParseError::InvalidLocation),
     chain!(
         fix!(tag_s!("L")) ~
         latitude: numeric_data ~
@@ -163,7 +163,7 @@ named!(location<&str, DataField, ParseError>,
  * end of the wind speed if there is no bearing specified.
  */
 named!(windspeed<&str, DataField, ParseError>,
-    error!(Custom(ParseError::InvalidWindSpeed),
+    return_error!(Custom(ParseError::InvalidWindSpeed),
     chain!(
         fix!(tag_s!("W")) ~
         speed: numeric_data ~
@@ -173,7 +173,7 @@ named!(windspeed<&str, DataField, ParseError>,
 
 /* Parse Zombie mode. */
 named!(zombie<&str, DataField, ParseError>,
-    error!(Custom(ParseError::InvalidZombie), fix!(
+    return_error!(Custom(ParseError::InvalidZombie), fix!(
     chain!(
         tag_s!("Z") ~
         mode: flat_map!(take_s!(1), is_a_s!("01")),
@@ -182,27 +182,27 @@ named!(zombie<&str, DataField, ParseError>,
 
 /* Parse comments/messages */
 named!(comment<&str, DataField, ParseError>,
-    error!(Custom(ParseError::InvalidComment),
+    return_error!(Custom(ParseError::InvalidComment),
     chain!(
         fix!(tag_s!(":")) ~
-        comment: error!(Custom(ParseError::InvalidCommentCharacter),
+        comment: return_error!(Custom(ParseError::InvalidCommentCharacter),
             fix!(is_a_s!("abcdefghijklmnopqrstuvwxyz0123456789+-. "))),
         || {DataField::Comment(comment)}
 )));
 
 /* Parse the path at the end of the message */
 named!(path<&str, Vec<&str>, ParseError>,
-    error!(Custom(ParseError::InvalidPath),
+    return_error!(Custom(ParseError::InvalidPath),
     delimited!(
         fix!(tag_s!("[")),
         fix!(separated_nonempty_list!(tag_s!(","), alphanumeric)),
-        error!(Custom(ParseError::InvalidPathCharacter), fix!(tag_s!("]")))
+        return_error!(Custom(ParseError::InvalidPathCharacter), fix!(tag_s!("]")))
     )
 ));
 
 /* Parse the data section of a packet up to the start of the path */
 named!(packet_data<&str, Vec<DataField>, ParseError>,
-    error!(Custom(ParseError::InvalidData),
+    return_error!(Custom(ParseError::InvalidData),
         many0!(
                 dbg!(switch!(fix!(peek!(take_s!(1))),
                     "T" => call!(temperature)   |
@@ -226,7 +226,7 @@ named!(packet_data<&str, Vec<DataField>, ParseError>,
 
 /* Parse an entire packet */
 named!(pub parse<&str, Packet, ParseError>,
-    error!(Custom(ParseError::InvalidPacket),
+    return_error!(Custom(ParseError::InvalidPacket),
     chain!(
         repeat: repeat ~
         sequence: sequence ~

@@ -9,7 +9,7 @@ license = "MIT"
 readme = "README.md"
 
 [dependencies]
-nom = "1.2.2"
+nom = {version = "^2.0", features = ["verbose-errors"]}
 rustc-serialize = "0.3"
 
 [lib]
