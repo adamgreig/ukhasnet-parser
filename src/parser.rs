@@ -54,7 +54,7 @@ impl_rdp! {
         zombie_mode =  { ["0"] | ["1"] }
         zombie      =  { ["Z"] ~ zombie_mode }
 
-        data_field  =  { voltage | temperature | humidity | pressure | custom |
+        data_field  =  { voltage | current | temperature | humidity | pressure | custom |
                         sun  | rssi | windspeed | location | count | zombie }
 
         data        =   { data_field* }
