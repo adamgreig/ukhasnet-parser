@@ -24,8 +24,8 @@ fn main() {
     let stream = TcpStream::connect("ukhas.net:3010").unwrap();
     let mut bufstream = BufReader::new(stream);
     loop {
-        let mut data = Vec::new();
-        match bufstream.read_until(b'}', &mut data) {
+        let mut data = String::new();
+        match bufstream.read_line(&mut data) {
             Ok(_) => (),
             Err(e) => {
                 println!("Error reading from socket: {}", e);
@@ -33,15 +33,7 @@ fn main() {
             }
         }
 
-        let jsonstr = match str::from_utf8(&data) {
-            Ok(s) => s,
-            Err(e) => {
-                println!("Error converting data to string: {}", e);
-                continue;
-            }
-        };
-
-        let message = match json::decode::<SocketMessage>(&jsonstr) {
+        let message = match json::decode::<SocketMessage>(&data) {
             Ok(m) => m,
             Err(e) => {
                 println!("Error parsing message JSON: {}", e);
