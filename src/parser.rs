@@ -7,10 +7,10 @@ impl_rdp! {
     /*
      * UKHASnet Packet Grammar
      *
-     * Source: https://ukhas.net/wiki/packet
-     * This syntax: http://dragostis.github.io/pest/pest/macro.grammar!.html#syntax
+     * Reference: https://github.com/UKHASnet/protocol/blob/master/grammar.ebnf
+     * Syntax: http://dragostis.github.io/pest/pest/macro.grammar!.html#syntax
      *
-     * In brief: Literals are quoted and in arrays,
+     * In brief: Literals are quoted and in square brackets,
      *           ~ concatenates,
      *           + means "one or more"
      *           * means "zero or more"
@@ -54,20 +54,27 @@ impl_rdp! {
         zombie_mode =  { ["0"] | ["1"] }
         zombie      =  { ["Z"] ~ zombie_mode }
 
-        data_field  =  { voltage | current | temperature | humidity | pressure | custom |
-                        sun  | rssi | windspeed | location | count | zombie }
+        data_field  =  { voltage | current | temperature | humidity |
+                         pressure | custom | sun  | rssi | windspeed |
+                         location | count | zombie }
 
         data        =   { data_field* }
 
-        message_content     =  { (letter | digit | symbol)* }
-        message             =  { [":"] ~ message_content }
+        comment_content     =  { (letter | digit | symbol)* }
+        comment             =  { [":"] ~ comment_content }
 
-        node_name_content   =  { (uppercase_letter | digit)* }
+        /* The specification says upper case letters only, but enough deployed
+         * nodes use lower case names for it to be an annoying breaking change.
+         * To compromise, we will accept lower case letters in node names, but
+         * convert them to upper case in the parser, so they're stored and
+         * displayed as all upper case thereafter.
+         */
+        node_name_content   =  { (letter | digit)* }
         node_name           =  { node_name_content }
 
         path        =  { ["["] ~ node_name ~ ( [","] ~ node_name )* ~ ["]"] }
 
-        packet      =  { repeat ~ sequence ~ data ~ message? ~ path ~ eoi }
+        packet      =  { repeat ~ sequence ~ data ~ comment? ~ path ~ eoi }
     }
 
     /*
@@ -83,6 +90,10 @@ impl_rdp! {
      * match any decimals, at which point it returns a new Vec, then steps back
      * up the stack, inserting into that Vec, until it eventually returns it.
      * _data and _path behave similarly.
+     *
+     * Note that the extensive unwrap() is fine because the parser itself will
+     * have validated that the field contained the relevant type. Any panics
+     * would be a bug in the underlying parser library.
      */
     process! {
         _repeat(&self) -> u8 {
@@ -175,14 +186,14 @@ impl_rdp! {
             () => Vec::<DataField>::new(),
         }
 
-        _message(&self) -> Option<String> {
-            (_: message, &message: message_content) =>
-                Some(message.to_owned()),
+        _comment(&self) -> Option<String> {
+            (_: comment, &comment: comment_content) =>
+                Some(comment.to_owned()),
             () => None,
         }
 
         _node_name(&self) -> String {
-            (&name: node_name_content) => name.to_owned()
+            (&name: node_name_content) => name.to_owned().to_uppercase()
         }
 
         _path(&self) -> Vec<String> {
@@ -196,9 +207,9 @@ impl_rdp! {
 
         parse(&self) -> Packet {
             (_: packet, repeat: _repeat(), sequence: _sequence(),
-             data: _data(), message: _message(), path: _path()) =>
+             data: _data(), comment: _comment(), path: _path()) =>
                 Packet{ repeat: repeat, sequence: sequence, data: data,
-                        comment: message, path: path }
+                        comment: comment, path: path }
         }
     }
 }

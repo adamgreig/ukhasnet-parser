@@ -6,7 +6,7 @@ pub struct Location {
     pub alt: Option<f32>,
 }
 
-/* Store a Wind Speed, with speed and optional bearing. */
+/* Store a Wind Speed, with optional speed and optional bearing. */
 #[derive(Debug, PartialEq)]
 pub struct WindSpeed {
     pub speed: Option<f32>,
