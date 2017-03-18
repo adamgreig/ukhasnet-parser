@@ -9,6 +9,6 @@ fn main() {
 
     match parse(&s) {
         Ok(p) => println!("{:?}", p),
-        Err(_) => println!("Error"),
+        Err(e) => println!("{}", e),
     }
 }
