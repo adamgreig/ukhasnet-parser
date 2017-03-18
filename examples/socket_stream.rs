@@ -11,17 +11,14 @@ use ukhasnet_parser::{parse};
 
 #[derive(Debug,RustcDecodable)]
 struct SocketMessage {
-    i: u32,
-    ni: u32,
     nn: String,
     p: String,
     r: i32,
-    s: String,
     t: String
 }
 
 fn main() {
-    let stream = TcpStream::connect("ukhas.net:3010").unwrap();
+    let stream = TcpStream::connect("ukhas.net:3020").unwrap();
     let mut bufstream = BufReader::new(stream);
     loop {
         let mut data = String::new();
