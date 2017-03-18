@@ -1,430 +1,243 @@
-use nom::{digit, alphanumeric, IResult, ErrorKind};
-use nom::ErrorKind::{IsAStr, Custom};
-use nom::Err::Position;
-use std::str::FromStr;
+use pest::prelude::*;
+use std::error;
+use std::fmt;
+use packet::{Location, WindSpeed, DataField, Packet};
 
-pub use nom::IResult::{Done, Error, Incomplete};
+impl_rdp! {
+    /*
+     * UKHASnet Packet Grammar
+     *
+     * Reference: https://github.com/UKHASnet/protocol/blob/master/grammar.ebnf
+     * Syntax: http://dragostis.github.io/pest/pest/macro.grammar!.html#syntax
+     *
+     * In brief: Literals are quoted and in square brackets,
+     *           ~ concatenates,
+     *           + means "one or more"
+     *           * means "zero or more"
+     *           ? means "optional"
+     *           _ means "this token is silent and is subsumed into the parent"
+     */
+    grammar! {
+        digit       = _{ ['0'..'9'] }
+        integer     =  { (["+"] | ["-"])? ~ digit+ }
+        decimal     =  { (["+"] | ["-"])? ~ digit+ ~ (["."] ~ digit+)? }
 
-/* Store a Location, with latitude, longitude, and optional altitude. */
-#[derive(Debug, PartialEq)]
-pub struct Location {
-    pub latitude: f32,
-    pub longitude: f32,
-    pub altitude: Option<f32>,
-}
+        lowercase_letter = _{ ['a'..'z'] }
+        uppercase_letter = _{ ['A'..'Z'] }
 
-/* Store a Wind Speed, with speed and optional bearing. */
-#[derive(Debug, PartialEq)]
-pub struct WindSpeed {
-    pub speed: f32,
-    pub bearing: Option<f32>,
-}
-
-/* Store one of any of the data types */
-#[derive(Debug, PartialEq)]
-pub enum DataField<'a> {
-    Temperature(Vec<f32>),
-    Voltage(Vec<f32>),
-    Current(Vec<f32>),
-    Humidity(Vec<f32>),
-    Pressure(Vec<f32>),
-    Sun(Vec<f32>),
-    Rssi(Vec<f32>),
-    Count(Vec<f32>),
-    Custom(Vec<f32>),
-    Location(Location),
-    WindSpeed(WindSpeed),
-    Zombie(u8),
-    Comment(&'a str)
-}
-
-/* Store a whole packet */
-#[derive(Debug, PartialEq)]
-pub struct Packet<'a> {
-    pub repeat: u8,
-    pub sequence: char,
-    pub data: Vec<DataField<'a>>,
-    pub path: Vec<&'a str>
-}
-
-/* Possible error states */
-#[derive(Debug, PartialEq)]
-pub enum ParseError {
-    RepeatNotNumeric,
-    SequenceNotAlphabetic,
-    DataNotNumeric,
-    UnknownType,
-    InvalidDataField,
-    InvalidLocation,
-    InvalidWindSpeed,
-    InvalidZombie,
-    InvalidComment,
-    InvalidCommentCharacter,
-    InvalidPath,
-    InvalidPathCharacter,
-    InvalidData,
-    InvalidPacket,
-}
-
-/* Custom is_a_s until nom PR#239 is merged */
-macro_rules! is_a_s (
-  ($input:expr, $arr:expr) => (
-    {
-      use std::collections::HashSet;
-      let set: HashSet<char> = $arr.chars().collect();
-      let mut offset = $input.len();
-      for (o, c) in $input.char_indices() {
-        if !set.contains(&c) {
-          offset = o;
-          break;
+        letter      = _{ lowercase_letter | uppercase_letter }
+        symbol      = _{
+            [" "] | ["!"] | ["\""] | ["#"] | ["$"] | ["%"] | ["&"] | ["'"]  |
+            ["("] | [")"] | ["*"]  | ["+"] | [","] | ["-"] | ["."] | ["/"]  |
+            [":"] | [";"] | ["<"]  | ["="] | [">"] | ["?"] | ["@"] | ["\\"] |
+            ["^"] | ["_"] | ["`"]  | ["{"] | ["|"] | ["}"] | ["~"]
         }
-      }
-      let res: IResult<_,_> = if offset == 0 {
-        Error(Position(IsAStr,$input))
-      } else if offset < $input.len() {
-        Done(&$input[offset..], &$input[..offset])
-      } else {
-        Done("", $input)
-      };
-      res
+
+        repeat      =  { digit }
+        sequence    =  { lowercase_letter }
+
+        decimal_list=  { decimal? ~ ( [","] ~ decimal? )* }
+
+        voltage     =  { ["V"] ~ decimal_list }
+        current     =  { ["I"] ~ decimal_list }
+        temperature =  { ["T"] ~ decimal_list }
+        humidity    =  { ["H"] ~ decimal_list }
+        pressure    =  { ["P"] ~ decimal_list }
+        custom      =  { ["X"] ~ decimal_list }
+        sun         =  { ["S"] ~ decimal_list }
+        rssi        =  { ["R"] ~ decimal_list }
+        count       =  { ["C"] ~ decimal_list }
+        windspeed   =  { ["W"] ~ decimal? ~ ( [","] ~ decimal? )? }
+        location    =  { ["L"] ~ ( (decimal ~ [","] ~ decimal)? | [","] )
+                               ~ ( [","] ~ decimal? )? }
+
+        zombie_mode =  { ["0"] | ["1"] }
+        zombie      =  { ["Z"] ~ zombie_mode }
+
+        data_field  =  { voltage | current | temperature | humidity |
+                         pressure | custom | sun  | rssi | windspeed |
+                         location | count | zombie }
+
+        data        =   { data_field* }
+
+        comment_content     =  { (letter | digit | symbol)* }
+        comment             =  { [":"] ~ comment_content }
+
+        /* The specification says upper case letters only, but enough deployed
+         * nodes use lower case names for it to be an annoying breaking change.
+         * To compromise, we will accept lower case letters in node names, but
+         * convert them to upper case in the parser, so they're stored and
+         * displayed as all upper case thereafter.
+         */
+        node_name_content   =  { (letter | digit)* }
+        node_name           =  { node_name_content }
+
+        path        =  { ["["] ~ node_name ~ ( [","] ~ node_name )* ~ ["]"] }
+
+        packet      =  { repeat ~ sequence ~ data ~ comment? ~ path ~ eoi }
     }
-  );
-);
 
-/* Type specialised fix_error macro */
-macro_rules! fix (
-    ($i:expr, $submac:ident!( $($args:tt)* )) => (
-        fix_error!($i, ParseError, $submac!($($args)*))
-    );
-    ($i:expr, $f:expr) => (
-        fix!($i, call!($f));
-    );
-);
+    /*
+     * UKHASnet packet parsing
+     *
+     * Each rule maps one or more tokens from the stream into some reduced
+     * type, for example a sequence token into a char, or three decimal tokens
+     * into a Location struct.
+     *
+     * Some rules are called recursively, such as _decimal_list, which first
+     * consumes the decimal_list token, then consumes a number of decimals.
+     * Think about it backwards: it will recurse into the stack until it cannot
+     * match any decimals, at which point it returns a new Vec, then steps back
+     * up the stack, inserting into that Vec, until it eventually returns it.
+     * _data and _path behave similarly.
+     *
+     * Note that the extensive unwrap() is fine because the parser itself will
+     * have validated that the field contained the relevant type. Any panics
+     * would be a bug in the underlying parser library.
+     */
+    process! {
+        _repeat(&self) -> u8 {
+            (&repeat: repeat) => repeat.parse::<u8>().unwrap()
+        }
 
+        _sequence(&self) -> char {
+            (&sequence: sequence) =>
+                sequence.chars().nth(0).unwrap()
+        }
 
-/* Simple parsers for the repeat-count and sequence-number */
-named!(repeat<&str, u8, ParseError>,
-       return_error!(Custom(ParseError::RepeatNotNumeric), fix!(
-       map_res!(flat_map!(take_s!(1), digit), FromStr::from_str))));
-named!(sequence<&str, char, ParseError>,
-       return_error!(Custom(ParseError::SequenceNotAlphabetic), fix!(
-       map!(flat_map!(take_s!(1), is_a_s!("abcdefghijklmnopqrstuvwxyz")),
-            |s: &str| { s.chars().nth(0).unwrap() }))));
+        _location(&self) -> Location {
+            (&latitude: decimal, &longitude: decimal, &altitude: decimal) => {
+                let lat = latitude.parse::<f32>().unwrap();
+                let lng = longitude.parse::<f32>().unwrap();
+                let alt = altitude.parse::<f32>().unwrap();
+                Location{ latlng: Some((lat, lng)), alt: Some(alt) }
+            },
+            (&latitude: decimal, &longitude: decimal) => {
+                let lat = latitude.parse::<f32>().unwrap();
+                let lng = longitude.parse::<f32>().unwrap();
+                Location{ latlng: Some((lat, lng)), alt: None }
+            },
+            (&altitude: decimal) => {
+                let alt = altitude.parse::<f32>().unwrap();
+                Location{ latlng: None, alt: Some(alt) }
+            },
+            () => Location{ latlng: None, alt: None },
+        }
 
-/* Parse the numeric data common to most fields */
-named!(numeric_data<&str, f32, ParseError>,
-       return_error!(Custom(ParseError::DataNotNumeric), fix!(
-       map_res!(is_a_s!("+-1234567890."), FromStr::from_str))));
+        _windspeed(&self) -> WindSpeed {
+            (&speed: decimal, &bearing: decimal) => {
+                let speed = speed.parse::<f32>().unwrap();
+                let bearing = bearing.parse::<f32>().unwrap();
+                WindSpeed{speed: Some(speed), bearing: Some(bearing)}
+            },
+            (&speed: decimal) => {
+                let speed = speed.parse::<f32>().unwrap();
+                WindSpeed{speed: Some(speed), bearing: None}
+            },
+            () => WindSpeed{speed: None, bearing: None},
+        }
 
-/* Macro to implement the common pattern of a letter followed by one or more
- * numbers separated by commas.
- */
-macro_rules! scalar_data_array {
-    ($typename:ident, $name:ident, $tag:expr) => {
-        named!($name<&str, DataField, ParseError>,
-        return_error!(Custom(ParseError::InvalidDataField),
-        chain!(
-            fix!(tag_s!($tag)) ~
-            data: separated_nonempty_list!(fix!(tag_s!(",")), numeric_data),
-            || {DataField::$typename(data)}
-        )));
+        _decimal_list(&self) -> Vec<f32> {
+            (_: decimal_list, list: _decimal_list()) => list,
+            (&head: decimal, mut tail: _decimal_list()) => {
+                tail.insert(0, head.parse::<f32>().unwrap());
+                tail
+            },
+            () => Vec::<f32>::new(),
+        }
+
+        _zombie(&self) -> u8 {
+            (&mode: zombie_mode) => mode.parse::<u8>().unwrap()
+        }
+
+        _datafield(&self) -> DataField {
+            (_: voltage, voltages: _decimal_list()) =>
+                DataField::Voltage(voltages),
+            (_: current, currents: _decimal_list()) =>
+                DataField::Current(currents),
+            (_: temperature, temperatures: _decimal_list()) =>
+                DataField::Temperature(temperatures),
+            (_: humidity, humidities: _decimal_list()) =>
+                DataField::Humidity(humidities),
+            (_: pressure, pressures: _decimal_list()) =>
+                DataField::Pressure(pressures),
+            (_: custom, customs: _decimal_list()) =>
+                DataField::Custom(customs),
+            (_: sun, suns: _decimal_list()) =>
+                DataField::Sun(suns),
+            (_: rssi, rssis: _decimal_list()) =>
+                DataField::Rssi(rssis),
+            (_: count, counts: _decimal_list()) =>
+                DataField::Count(counts),
+            (_: windspeed, windspeed: _windspeed()) =>
+                DataField::WindSpeed(windspeed),
+            (_: location, location: _location()) =>
+                DataField::Location(location),
+            (_: zombie, zombie: _zombie()) =>
+                DataField::Zombie(zombie),
+        }
+
+        _data(&self) -> Vec<DataField> {
+            (_: data, fields: _data()) => fields,
+            (_: data_field, head: _datafield(), mut tail: _data()) => {
+                tail.insert(0, head);
+                tail
+            },
+            () => Vec::<DataField>::new(),
+        }
+
+        _comment(&self) -> Option<String> {
+            (_: comment, &comment: comment_content) =>
+                Some(comment.to_owned()),
+            () => None,
+        }
+
+        _node_name(&self) -> String {
+            (&name: node_name_content) => name.to_owned().to_uppercase()
+        }
+
+        _path(&self) -> Vec<String> {
+            (_: path, names: _path()) => names,
+            (_: node_name, head: _node_name(), mut tail: _path()) => {
+                tail.insert(0, head);
+                tail
+            },
+            () => Vec::<String>::new(),
+        }
+
+        parse(&self) -> Packet {
+            (_: packet, repeat: _repeat(), sequence: _sequence(),
+             data: _data(), comment: _comment(), path: _path()) =>
+                Packet{ repeat: repeat, sequence: sequence, data: data,
+                        comment: comment, path: path }
+        }
     }
 }
 
-/* Generate parsers for the simple types as above. */
-scalar_data_array!(Temperature, temperature, "T");
-scalar_data_array!(Voltage, voltage, "V");
-scalar_data_array!(Current, current, "I");
-scalar_data_array!(Humidity, humidity, "H");
-scalar_data_array!(Pressure, pressure, "P");
-scalar_data_array!(Sun, sun, "S");
-scalar_data_array!(Rssi, rssi, "R");
-scalar_data_array!(Count, count, "C");
-scalar_data_array!(Custom, custom, "X");
+/// Contains the position in the input at which a parsing error occurred,
+/// and a Vec of token names we expected to see instead.
+#[derive(Debug)]
+pub struct ParserError {
+    pub position: usize,
+    pub expected: Vec<String>,
+}
 
-/* Parse a Location.
- * Note that (a bug in Nom?) there must be some remaining data after the end
- * of the location if there is no altitude specified.
- */
-named!(location<&str, DataField, ParseError>,
-    return_error!(Custom(ParseError::InvalidLocation),
-    chain!(
-        fix!(tag_s!("L")) ~
-        latitude: numeric_data ~
-        fix!(tag_s!(",")) ~
-        longitude: numeric_data ~
-        altitude: preceded!(fix!(tag_s!(",")), numeric_data)?,
-        || {DataField::Location(Location{
-                latitude: latitude, longitude: longitude, altitude: altitude})}
-)));
-
-/* Parse a WindSpeed.
- * Note that as with `location`, there must be some remaining data after the
- * end of the wind speed if there is no bearing specified.
- */
-named!(windspeed<&str, DataField, ParseError>,
-    return_error!(Custom(ParseError::InvalidWindSpeed),
-    chain!(
-        fix!(tag_s!("W")) ~
-        speed: numeric_data ~
-        bearing: preceded!(fix!(tag_s!(",")), numeric_data)?,
-        || {DataField::WindSpeed(WindSpeed{speed: speed, bearing: bearing})}
-)));
-
-/* Parse Zombie mode. */
-named!(zombie<&str, DataField, ParseError>,
-    return_error!(Custom(ParseError::InvalidZombie), fix!(
-    chain!(
-        tag_s!("Z") ~
-        mode: flat_map!(take_s!(1), is_a_s!("01")),
-        || {DataField::Zombie(mode.parse::<u8>().unwrap())}
-))));
-
-/* Parse comments/messages */
-named!(comment<&str, DataField, ParseError>,
-    return_error!(Custom(ParseError::InvalidComment),
-    chain!(
-        fix!(tag_s!(":")) ~
-        comment: return_error!(Custom(ParseError::InvalidCommentCharacter),
-            fix!(is_a_s!("abcdefghijklmnopqrstuvwxyz0123456789+-. "))),
-        || {DataField::Comment(comment)}
-)));
-
-/* Parse the path at the end of the message */
-named!(path<&str, Vec<&str>, ParseError>,
-    return_error!(Custom(ParseError::InvalidPath),
-    delimited!(
-        fix!(tag_s!("[")),
-        fix!(separated_nonempty_list!(tag_s!(","), alphanumeric)),
-        return_error!(Custom(ParseError::InvalidPathCharacter), fix!(tag_s!("]")))
-    )
-));
-
-/* Parse the data section of a packet up to the start of the path */
-named!(packet_data<&str, Vec<DataField>, ParseError>,
-    return_error!(Custom(ParseError::InvalidData),
-        many0!(
-                dbg!(switch!(fix!(peek!(take_s!(1))),
-                    "T" => call!(temperature)   |
-                    "V" => call!(voltage)       |
-                    "I" => call!(current)       |
-                    "H" => call!(humidity)      |
-                    "P" => call!(pressure)      |
-                    "S" => call!(sun)           |
-                    "R" => call!(rssi)          |
-                    "C" => call!(count)         |
-                    "X" => call!(custom)        |
-                    "L" => call!(location)      |
-                    "W" => call!(windspeed)     |
-                    "Z" => call!(zombie)        |
-                    ":" => call!(comment)
-                )
-            )
-        )
-    )
-);
-
-/* Parse an entire packet */
-named!(pub parse<&str, Packet, ParseError>,
-    return_error!(Custom(ParseError::InvalidPacket),
-    chain!(
-        repeat: repeat ~
-        sequence: sequence ~
-        data: packet_data ~
-        path: path,
-        || {
-            Packet{repeat: repeat, sequence: sequence, data: data, path: path}
-        }
-)));
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use super::{repeat, sequence, numeric_data, temperature, voltage, current,
-                humidity, pressure, sun, rssi, count, custom, location,
-                windspeed, zombie, comment, path, packet_data};
-    use nom::Err::{Position, NodePosition};
-    use nom::ErrorKind::{Custom, Fix};
-
-    #[test]
-    fn test_numeric_data() {
-        assert_eq!(numeric_data("12"), Done("", 12.0));
-        assert_eq!(numeric_data("12abc"), Done("abc", 12.0));
-        assert_eq!(numeric_data("12.5"), Done("", 12.5));
-        assert_eq!(numeric_data("-12.5"), Done("", -12.5));
-        assert_eq!(numeric_data("+.5"), Done("", 0.5));
-        assert_eq!(numeric_data("1Z"), Done("Z", 1.0));
-        assert_eq!(numeric_data("a123"), Error(NodePosition(
-            Custom(ParseError::DataNotNumeric), "a123",
-            Box::new(Position(Fix, "a123")))));
+impl fmt::Display for ParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Parser error at position {}", self.position)
     }
+}
 
-    #[test]
-    fn test_repeat() {
-        assert_eq!(repeat("3abc"), Done("abc", 3));
-        assert_eq!(repeat("2345"), Done("345", 2));
-        assert_eq!(repeat("a123"),
-            Error(NodePosition(Custom(ParseError::RepeatNotNumeric), "a123",
-                               Box::new(Position(Fix, "a123")))));
-        assert_eq!(repeat("!123"),
-            Error(NodePosition(Custom(ParseError::RepeatNotNumeric), "!123",
-                               Box::new(Position(Fix, "!123")))));
-    }
+impl error::Error for ParserError {
+    fn description(&self) -> &str { "Parser error" }
+    fn cause(&self) -> Option<&error::Error> { None }
+}
 
-    #[test]
-    fn test_sequence() {
-        assert_eq!(sequence("b123"), Done("123", 'b'));
-        assert_eq!(sequence("z123"), Done("123", 'z'));
-        assert_eq!(sequence("A1"),
-            Error(NodePosition(Custom(ParseError::SequenceNotAlphabetic), "A1",
-                  Box::new(Position(Fix, "A1")))));
-        assert_eq!(sequence("12"),
-            Error(NodePosition(Custom(ParseError::SequenceNotAlphabetic), "12",
-                  Box::new(Position(Fix, "12")))));
-        assert_eq!(sequence("!1"),
-            Error(NodePosition(Custom(ParseError::SequenceNotAlphabetic), "!1",
-                  Box::new(Position(Fix, "!1")))));
-    }
-
-    #[test]
-    fn test_scalar_arrays() {
-        assert_eq!(temperature("T5"),
-                   Done("", DataField::Temperature(vec!{5.})));
-        assert_eq!(temperature("T12.5"),
-                   Done("", DataField::Temperature(vec!{12.5})));
-        assert_eq!(temperature("T12.5,-15,8"),
-                   Done("", DataField::Temperature(vec!{12.5, -15., 8.})));
-        assert_eq!(voltage("V12.5,-15,8"),
-                   Done("", DataField::Voltage(vec!{12.5, -15., 8.})));
-        assert_eq!(current("I1,2.5,-3"),
-                   Done("", DataField::Current(vec!{1., 2.5, -3.})));
-        assert_eq!(humidity("H12.5,-15,8"),
-                   Done("", DataField::Humidity(vec!{12.5, -15., 8.})));
-        assert_eq!(pressure("P12.5,-15,8"),
-                   Done("", DataField::Pressure(vec!{12.5, -15., 8.})));
-        assert_eq!(sun("S12.5,-15,8"),
-                   Done("", DataField::Sun(vec!{12.5, -15., 8.})));
-        assert_eq!(rssi("R-12,-15,-8"),
-                   Done("", DataField::Rssi(vec!{-12., -15., -8.})));
-        assert_eq!(count("C123"),
-                   Done("", DataField::Count(vec!{123.})));
-        assert_eq!(custom("X123,4.56"),
-                   Done("", DataField::Custom(vec!{123., 4.56})));
-
-        assert_eq!(temperature("Thello"), Error(
-            NodePosition(Custom(ParseError::InvalidDataField), "Thello",
-            Box::new(NodePosition(Custom(ParseError::DataNotNumeric), "hello",
-            Box::new(Position(Fix, "hello")))))));
-    }
-
-    #[test]
-    fn test_location() {
-        assert_eq!(location("L51.52,-1.23[]"),
-                   Done("[]",
-                        DataField::Location(
-                            Location{
-                                latitude: 51.52,
-                                longitude: -1.23,
-                                altitude: None})));
-
-        assert_eq!(location("L51.52,-1.23,345"),
-                   Done("",
-                        DataField::Location(
-                            Location{
-                                latitude: 51.52,
-                                longitude: -1.23,
-                                altitude: Some(345.0)})));
-
-        assert_eq!(location("L51.52,abc,34"), Error(
-            NodePosition(Custom(ParseError::InvalidLocation), "L51.52,abc,34",
-            Box::new(NodePosition(Custom(ParseError::DataNotNumeric), "abc,34",
-            Box::new(Position(Fix, "abc,34")))))));
-    }
-
-    #[test]
-    fn test_comment() {
-        assert_eq!(comment(":hello worldT123"),
-                   Done("T123", DataField::Comment("hello world")));
-
-        assert_eq!(comment(":Hello"), Error(
-            NodePosition(Custom(ParseError::InvalidComment), ":Hello",
-            Box::new(NodePosition(Custom(ParseError::InvalidCommentCharacter),
-                                  "Hello",
-            Box::new(Position(Fix, "Hello")))))));
-    }
-
-    #[test]
-    fn test_windspeed() {
-        assert_eq!(windspeed("W15[]"),
-                   Done("[]", DataField::WindSpeed(WindSpeed{
-                        speed: 15.0, bearing: None})));
-
-        assert_eq!(windspeed("W15,123"),
-                   Done("", DataField::WindSpeed(WindSpeed{
-                       speed: 15.0, bearing: Some(123.0)})));
-
-        assert_eq!(windspeed("Whello"), Error(
-            NodePosition(Custom(ParseError::InvalidWindSpeed), "Whello",
-            Box::new(NodePosition(Custom(ParseError::DataNotNumeric), "hello",
-            Box::new(Position(Fix, "hello")))))));
-    }
-
-    #[test]
-    fn test_zombie() {
-        assert_eq!(zombie("Z0"), Done("", DataField::Zombie(0)));
-        assert_eq!(zombie("Z1"), Done("", DataField::Zombie(1)));
-        assert_eq!(zombie("Zno"), Error(
-            NodePosition(Custom(ParseError::InvalidZombie), "Zno",
-            Box::new(Position(Fix, "no")))));
-    }
-
-    #[test]
-    fn test_path() {
-        assert_eq!(path("[A,B,C]"), Done("", vec!{"A", "B", "C"}));
-        assert_eq!(path("[DH123]"), Done("", vec!{"DH123"}));
-        assert_eq!(path("[A,B/1]"), Error(
-            NodePosition(Custom(ParseError::InvalidPath), "[A,B/1]",
-            Box::new(NodePosition(Custom(ParseError::InvalidPathCharacter),
-                                  "/1]",
-            Box::new(Position(Fix, "/1]")))))));
-    }
-
-    #[test]
-    fn test_data() {
-        assert_eq!(packet_data("T21H68S123X1,2,3:hello[AG]"),
-            Done("[AG]", vec!{DataField::Temperature(vec!{21.}),
-                              DataField::Humidity(vec!{68.}),
-                              DataField::Sun(vec!{123.}),
-                              DataField::Custom(vec!{1., 2., 3.}),
-                              DataField::Comment("hello")}));
-        //assert_eq!(packet_data("T1HaX2[A]"),
-            //Done("", vec!{DataField::Temperature(vec!{21.}),
-                              //DataField::Humidity(vec!{68.}),
-                              //DataField::Sun(vec!{123.}),
-                              //DataField::Custom(vec!{1., 2., 3.}),
-                              //DataField::Comment("hello")}));
-        //assert_eq!(packet_data("T21J5X1"), Error(
-            //Position(Custom(ParseError::InvalidData), "T21J5X1")));
-    }
-
-    #[test]
-    fn test_packet() {
-        assert_eq!(parse("3bT21S80[AG,AH]"),
-            Done("",
-                 Packet {
-                     repeat: 3,
-                     sequence: 'b',
-                     data: vec!{
-                         DataField::Temperature(vec!{21.}),
-                         DataField::Sun(vec!{80.})
-                    },
-                    path: vec!{"AG", "AH"}
-                 }
-            )
-        );
-
-        //assert_eq!(parse("3bT1J2X3[A,B]"), Error(
-            //Position(Custom(ParseError::InvalidPacket), "J2X3[A,B]")
-        //));
+impl ParserError {
+    /// Extract error information from a parser.
+    pub fn from_parser<'a, T: Input<'a>>(parser: &mut Rdp<T>) -> ParserError {
+        let (expected, position) = parser.expected();
+        let exp = expected.iter().map(|r| { format!("{:?}", r) }).collect();
+        ParserError{ position: position, expected: exp }
     }
 }

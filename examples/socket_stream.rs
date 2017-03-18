@@ -1,6 +1,5 @@
 extern crate ukhasnet_parser;
 extern crate rustc_serialize;
-extern crate nom;
 
 use std::str;
 use std::io::prelude::*;
@@ -8,7 +7,7 @@ use std::io::BufReader;
 use std::net::TcpStream;
 
 use rustc_serialize::json;
-use ukhasnet_parser::{parse, Done, Error, Incomplete};
+use ukhasnet_parser::{parse};
 
 #[derive(Debug,RustcDecodable)]
 struct SocketMessage {
@@ -54,9 +53,8 @@ fn main() {
         println!("{}", message.p);
 
         match parse(&message.p) {
-            Done(_, p) => println!("{:?}", p),
-            Error(e) => {println!("Error parsing packet: {}", e); continue;},
-            Incomplete(_) => {println!("Incomplete data"); continue;}
+            Ok(p) => println!("{:?}", p),
+            Err(e) => { println!("Error parsing packet: {}", e); continue; },
         }
 
         println!("");
